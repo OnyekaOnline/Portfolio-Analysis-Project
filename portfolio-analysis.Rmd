@@ -1,0 +1,887 @@
+---
+title: "Portfolio Analysis by Onyeka Okonkwo"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+#BUSINESS INFO AND PROBLEM
+Data is for a loan company serving the under-served market. The company provides credit facilities to customers for uses ranging from Business, Education, Groceries and Personal effects.
+
+#TASK 
+1. Descriptive analytics of the data
+2. PAR Analysis showing evolution & recommendations, for this analysis please use PAR7, PAR15, PAR30 and PAR60
+
+
+
+
+#IMPORT DATA
+
+Import, Load libraries and View data
+```{r}
+library(readr)
+library(dplyr)
+library(lubridate)
+df <- read_csv("")
+View(df)
+```
+
+Data structure
+```{r}
+str(df)
+```
+
+
+#DATA CLEANING AND PREP
+
+###Change class of variables
+
+rounding numeric values to 2 decimal
+```{r}
+df[,4:6] <- round(df[,4:6], digits = 2)
+```
+
+Characters to Factors
+```{r}
+df[,8:10] <- lapply(df[,8:10], as.factor)
+df$gender <- as.factor(df$gender)
+df$employment_status <- as.factor(df$employment_status)
+```
+
+Character to Dates
+```{r}
+df$date_of_birth <- dmy(df$date_of_birth)
+df$approval_date <- dmy(df$approval_date)
+```
+
+```{r}
+df$date <- dmy(df$date)
+df$last_payment_date <- dmy(df$last_payment_date)
+df$default_date <- dmy(df$default_date)
+```
+
+Arrange Date column in chronological order
+```{r}
+df %>% arrange(date)
+```
+
+Search for missing values, identifies how many and what columns they're in
+```{r}
+sum(is.na(df))
+names(df[, !complete.cases(t(df))])
+```
+
+Summary of Data
+```{r}
+summary(df)
+```
+
+###NOTES
+
+1. Data length is 350844 rows and 18 columns (created additional for Age)
+2. Date ranges from 15/3/2021 to 3/05/2021
+3. Highest amount disbursed was N273,810 and lowest was N7,143
+4. 37.9% of customers were late on payment 
+5. Company has 3 product category - Short, Scaling and Long. Majority of customers (80%) took Short product. This increases liquidity and availability of working capital for the company if payment is timely.
+6. 42.9% required loan for business, while between 5% and 11% needed a loan for Household goods, Personal, Emergency, Education and Medical Fees.
+7. Gender of customers was 68% male and 31% female.
+8. 53.6% were self-employed and 46.3% were employed. 
+9. Customers age range from 18 to 51.
+
+
+Check unique values in loan id, user id, state and bank
+```{r}
+length(unique(df$user_id))   
+length(unique(df$loan_id))
+```
+
+```{r}
+length(unique(df$state))
+length(unique(df$bank))
+```
+
+###NOTES:
+
+1. 59998 customers over the period
+2. 108752 unique loan IDs i.e loans disbursed during the period
+3. Customers take multiple loans, often without paying up the prior loan. 
+See examples in users 1483192 and 1488311
+4. Customers are resident in 37 states
+5. Loan was disbursed into 19 different banks
+
+
+
+#TREATMENT OF MISSING VALUES (NA)
+
+
+Date of Birth (8) impute with median value
+```{r}
+df$date_of_birth[is.na(df$date_of_birth)] <- median(df$date_of_birth, na.rm = TRUE)
+```
+User ID 439447 (1258b7a2-6a23-4146-aed4-e0117ea29234) has no Date of Birth recorded.
+
+
+Days Late (217726)
+Calculate for values i.e. if last payment date is less than date, then calculate days late, otherwise return value as 0. 
+```{r}
+df$days_late <- ifelse((df$last_payment_date < df$date), (df$date - df$last_payment_date), 0)
+```
+
+
+Balance (144) - calculate field and fill. We'll run multiple test conditions for this. 
+
+###Test 1 (144 NA)
+Replace with corresponding principal value when repayment is 0
+```{r}
+df$balance <- ifelse(df$repaid==0 & is.na(df$balance), df$principal, df$balance)
+```
+
+
+###Test 2 (135 NA)
+Group by User ID and Loan ID, then fill NA in balance with Principal if the repaid value is same as above
+```{r}
+df2 <- df%>%
+  group_by(user_id, loan_id) %>%
+  mutate(balance = ifelse(is.na(balance) & repaid == lag(repaid, n=1), principal, balance))
+```
+
+###(contd. Test 2 - 76 NA)
+Group by User ID and Loan ID, then fill NA in balance with Principal if the repaid value is same as below 
+```{r}
+df3 <- df2%>%
+  group_by(user_id, loan_id) %>%
+  mutate(balance = ifelse(is.na(balance) & repaid == lead(repaid, n=1), principal, balance))
+```
+
+
+###Test 3 (52 NA)
+Group by User ID and Loan ID, then fill NA in Balance with 0 if customer paid more than existing loan balance, otherwise leave value as NA. 
+```{r}
+df4 <- df3 %>%
+  group_by(user_id, loan_id) %>%
+  mutate(balance = ifelse(is.na(balance) & (repaid - lag(repaid, n=1))>lag(balance, n=1), 0, balance))
+```
+
+
+###Test 4 (15 NA)
+Group by user Id and Loan ID, if the repaid value is greater than existing loan balance, then fill with 0, otherwise leave as NA
+```{r}
+df5 <- df4%>%
+  group_by(user_id, loan_id) %>%
+  mutate(balance = ifelse(is.na(balance) & repaid > lag(balance, n=1), 0, balance))
+```
+This code seems similar to the previous chunk so no NAs were affected. May be okay to omit, but safe to keep it.
+
+
+###Test 5 (15 NA)
+Return 0 if repaid value is greater than loan principal
+```{r}
+df6 <- df5%>%
+  group_by(user_id, loan_id) %>%
+  mutate(balance = ifelse(is.na(balance) & repaid > principal, 0, balance))
+```
+
+
+###check if there's any NA left
+```{r}
+sum(is.na(df6))
+names(df6[, !complete.cases(t(df6))])
+```
+All cleared!! Now we can move forward. 
+
+
+Create New column for Age of Customers using Approval Date and DOB
+```{r}
+library(dplyr)
+calc_age <- function(birthDate, refDate = Sys.Date(), unit = "year") {
+  
+  require(lubridate)
+  
+  if(grepl(x = unit, pattern = "year")) {
+    as.period(interval(birthDate, refDate), unit = 'year')$year
+  } else if(grepl(x = unit, pattern = "month")) {
+    as.period(interval(birthDate, refDate), unit = 'month')$month
+  } else if(grepl(x = unit, pattern = "week")) {
+    floor(as.period(interval(birthDate, refDate), unit = 'day')$day / 7)
+  } else if(grepl(x = unit, pattern = "day")) {
+    as.period(interval(birthDate, refDate), unit = 'day')$day
+  } else {
+    print("Argument 'unit' must be one of 'year', 'month', 'week', or 'day'")
+    NA
+  }
+  
+}
+df6$Age = calc_age(birthDate = df6$date_of_birth, refDate = df6$approval_date, unit = "year")
+
+```
+
+
+rename df6
+```{r}
+Cleandf <- df6
+```
+
+
+VIEW DATA
+```{r}
+View(Cleandf)
+```
+
+
+
+#DATA VISUALISATION AND EDA
+
+```{r}
+library(ggplot2)
+library(DataExplorer)
+```
+
+
+```{r}
+p <- ggplot(data = Cleandf, aes(x = gender , y = principal))
+print(p)
+print(p + geom_point())
+```
+
+
+```{r}
+ggplot(group_by(Cleandf, loan_id), aes(x = product_type, fill = gender))+
+  geom_bar() +
+  facet_wrap(~ gender)
+```
+Between the 3 product categories for both genders, more customers took Short loans, and men took more loans in general than women.
+
+```{r}
+ggplot(data = Cleandf, aes(x = loan_status, fill = gender))+
+  geom_bar() +
+  facet_wrap(~ gender)
+```
+About 62% women pay on time, compared to about 60% of men. The difference in ability to pay on time does not appear to be significant.
+
+
+```{r}
+ggplot(group_by(Cleandf, loan_id), aes(x = gender, fill = gender))+
+  geom_bar() +
+  facet_wrap(~ reason, nrow = 3)
+```
+Both gender took more business loans, and others in these category topped reasons for loans collected - emergency, household goods, medical fees and person/confidential reasons. 
+
+
+```{r}
+ggplot(group_by(Cleandf, loan_id), aes(x = Age, y = principal))+
+  geom_line()+
+  facet_wrap(~ product_type, nrow = 3)
+```
+In scaling category, customers between ages 30 and 40 took the most loans. 
+For short loans ages 25 - 30 took more loans.
+Collection of long loans are evenly distributed across the age groups. 
+
+
+```{r}
+ggplot(group_by(Cleandf, loan_id), aes(employment_status, fill = gender))+
+  geom_bar() +
+  facet_wrap(~ gender, nrow = 2)
+```
+Among the customers, there are more self-employed women and more employed men.
+
+
+```{r}
+create_report(Cleandf)
+```
+
+
+```{r}
+plot_bar(Cleandf, by = "gender")
+```
+Loan Status - more women paid on time than men.
+Product Type - men took more scaling loan product, while women took more of Long product.
+Reason - women took more loans for business and education, and men for car/auto and transport/travel. 
+Employment Status - More self-employed women and employed men. 
+
+
+```{r}
+plot_histogram(Cleandf)
+```
+Age - most customers between 28 and 38
+
+
+```{r}
+plot_bar(Cleandf, by = "reason")
+```
+Product type - More long product taken for business reason 
+Employment status - Self-employed customers took more business loans
+
+
+```{r}
+plot_bar(Cleandf)
+```
+Loan status - more loans are paid on time.
+Gender - more than 50% more men than female customers. expand customer geographic by sex
+State - High concentration of customers in state Y25. expand customer geographics by location
+Bank - Majority of customers use bank C. consider partnerships with other banks
+
+
+```{r}
+plot_density(Cleandf)
+```
+Age - customers between 25 and 40
+Balance - balance owed is between 0 and 600,000.
+days late - between 0 and 7 days
+principal - loan amount collected is between 7,000 and 600,000
+repaid - most repayment amount is less than 10,000
+
+
+
+```{r}
+plot_qq(Cleandf)
+```
+
+
+```{r}
+plot_qq(Cleandf, by = "Age")
+```
+
+
+```{r}
+plot_boxplot(Cleandf, by = "reason")
+```
+
+```{r}
+plot_scatterplot(split_columns(Cleandf)$continuous, by = "balance", sampled_rows = 1000L)
+```
+
+Save as csv file
+```{r}
+write.csv(Cleandf, "CleanCS.csv")
+```
+
+
+
+#GROSS LOAN PORTFOLIO
+Needs to be grouped by user ID, loan ID. Then sum unique values in Balance
+
+```{r}
+df7 <- Cleandf %>% 
+group_by(date, loan_id) 
+```
+
+```{r}
+length(unique(df7$balance))
+sum(unique(df7$balance))
+```
+NOTES
+
+1. Total GLP = 
+2. Appears there's a disconnect between the loan amount repaid and the balance left for some customers.
+
+
+#Portfolio At Risk (PAR) ANALYSIS and EVOLUTION (7, 15, 30, 60)
+
+Portfolio-at-risk (PAR) ratio : Portfolio at risk (X days) / Gross loan portfolio
+Evolution (Per week?) 15/3, 22/3, 29/3, 5/4, 12/4, 19/4, 26/4, 3/5 (8 weeks in total)
+
+Task - 
+sum by week
+Group by Date (week) and loan ID
+
+
+###Wk 1 - 15/3
+```{r}
+Wk1 <- Cleandf %>%
+  filter(date == "2021/03/15") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+```{r}
+View(Wk1)
+```
+
+GLP of Week 1 - 1,375,404,576
+```{r}
+sum(Wk1$balance)
+```
+
+```{r}
+length(unique(Cleandf$user_id))
+```
+
+
+EVOLUTION FOR WEEK 1
+
+sum of balance when days late is 7 and above - 27.39%
+```{r}
+Par7wk1 <- Wk1 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk1$balance)/1375404576
+```
+
+
+sum of balance when days late is 15 and above - 23.28%
+```{r}
+Par15wk1 <- Wk1 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk1$balance)/1375404576
+```
+
+sum of balance when days late is 30 and above 17.44%
+```{r}
+Par30wk1 <- Wk1 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk1$balance)/1375404576
+```
+
+sum of balance when days late is 60 and above - 7.86%
+```{r}
+Par60wk1 <- Wk1 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk1$balance)/1375404576
+```
+
+
+###Wk 2 - 22/3
+```{r}
+Wk2 <- Cleandf %>%
+  filter(date == "2021/03/22") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP Wk2 - 1,405,305,146
+```{r}
+View(Wk2)
+sum(Wk2$balance)
+```
+
+
+EVOLUTION FOR WEEK 2
+
+sum of balance when days late is 7 and above - 26.26%
+```{r}
+Par7wk2 <- Wk2 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk2$balance)/1405305146
+```
+
+
+sum of balance when days late is 15 and above - 23.16%
+```{r}
+Par15wk2 <- Wk2 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk2$balance)/1405305146
+```
+
+sum of balance when days late is 30 and above - 17.13%
+```{r}
+Par30wk2 <- Wk2 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk2$balance)/1405305146
+```
+
+sum of balance when days late is 60 and above - 8.19%
+```{r}
+Par60wk2 <- Wk2 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk2$balance)/1405305146
+```
+
+
+###Wk 3 - 29/3
+
+```{r}
+Wk3 <- Cleandf %>%
+  filter(date == "2021/03/29") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP wk 3 = 1,411,598,292
+```{r}
+View(Wk3)
+sum(Wk3$balance)
+```
+
+
+WEEK 3 EVOLUTION 
+
+sum of balance when days late is 7 and above - 26.51%
+```{r}
+Par7wk3 <- Wk3 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk3$balance)/1411598292
+```
+
+
+sum of balance when days late is 15 and above - 23.08%
+```{r}
+Par15wk3 <- Wk3 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk3$balance)/1411598292
+```
+
+sum of balance when days late is 30 and above - 17.52%
+```{r}
+Par30wk3 <- Wk3 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk3$balance)/1411598292
+```
+
+sum of balance when days late is 60 and above - 8.46%
+```{r}
+Par60wk3 <- Wk3 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk3$balance)/1411598292
+```
+
+
+###Wk 4 - 5/4
+
+```{r}
+Wk4 <- Cleandf %>%
+  filter(date == "2021/04/05") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP = 1,414,476,977
+```{r}
+View(Wk4)
+sum(Wk4$balance)
+```
+
+WEEK 4 EVOLUTION 
+
+sum of balance when days late is 7 and above - 26.40%
+```{r}
+Par7wk4 <- Wk4 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk4$balance)/1414476977
+```
+
+
+sum of balance when days late is 15 and above - 22.92%
+```{r}
+Par15wk4 <- Wk4 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk4$balance)/1414476977
+```
+
+sum of balance when days late is 30 and above - 17.87%
+```{r}
+Par30wk4 <- Wk4 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk4$balance)/1414476977
+```
+
+sum of balance when days late is 60 and above - 8.18%
+```{r}
+Par60wk4 <- Wk4 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk4$balance)/1414476977
+```
+
+
+###Wk 5 - 12/4
+
+```{r}
+Wk5 <- Cleandf %>%
+  filter(date == "2021/04/12") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP wk 5 = 1,458,110,474
+```{r}
+View(Wk5)
+sum(Wk5$balance)
+```
+
+WEEK 5 EVOLUTION 
+
+sum of balance when days late is 7 and above - 27.42%
+```{r}
+Par7wk5 <- Wk5 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk5$balance)/1458110474
+```
+
+
+sum of balance when days late is 15 and above - 22.75%
+```{r}
+Par15wk5 <- Wk5 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk5$balance)/1458110474
+```
+
+sum of balance when days late is 30 and above - 17.63%
+```{r}
+Par30wk5 <- Wk5 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk5$balance)/1458110474
+```
+
+sum of balance when days late is 60 and above - 8.09%
+```{r}
+Par60wk5 <- Wk5 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk5$balance)/1458110474
+```
+
+
+
+###Wk 6 - 19/4
+```{r}
+Wk6 <- Cleandf %>%
+  filter(date == "2021/04/19") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP wk 6 - 1,452,277,510
+```{r}
+View(Wk6)
+sum(Wk6$balance)
+```
+
+WEEK 6 EVOLUTION 
+
+sum of balance when days late is 7 and above - 27.53%
+```{r}
+Par7wk6 <- Wk6 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk6$balance)/1452277510
+```
+
+
+sum of balance when days late is 15 and above - 23.56%
+```{r}
+Par15wk6 <- Wk6 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk6$balance)/1452277510
+```
+
+sum of balance when days late is 30 and above - 17.05%
+```{r}
+Par30wk6 <- Wk6 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk6$balance)/1452277510
+```
+
+sum of balance when days late is 60 and above - 7.61%
+```{r}
+Par60wk6 <- Wk6 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk6$balance)/1452277510
+```
+
+
+
+###Wk 7 - 26/4
+
+```{r}
+Wk7 <- Cleandf %>%
+  filter(date == "2021/04/26") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP wk 7 - 1,461,959,963
+```{r}
+View(Wk7)
+sum(Wk7$balance)
+```
+
+
+WEEK 7 EVOLUTION 
+
+sum of balance when days late is 7 and above - 27.65%
+```{r}
+Par7wk7 <- Wk7 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk7$balance)/1461959963
+```
+
+
+sum of balance when days late is 15 and above - 23.78%
+```{r}
+Par15wk7 <- Wk7 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk7$balance)/1461959963
+```
+
+sum of balance when days late is 30 and above - 16.82%
+```{r}
+Par30wk7 <- Wk7 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk7$balance)/1461959963
+```
+
+sum of balance when days late is 60 and above - 7.45%
+```{r}
+Par60wk7 <- Wk7 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk7$balance)/1461959963
+```
+
+
+
+###Wk 8 - 3/5
+
+```{r}
+Wk8 <- Cleandf %>%
+  filter(date == "2021/05/03") %>%
+  select(date, user_id, loan_id, principal, balance, days_late)%>%
+  group_by(date, user_id, loan_id)
+```
+
+GLP Wk 8 = 1,432,066,814
+```{r}
+View(Wk8)
+sum(Wk8$balance)
+```
+
+
+WEEK 8 EVOLUTION 
+
+sum of balance when days late is 7 and above - 28.37%
+```{r}
+Par7wk8 <- Wk8 %>%
+  filter(days_late > 7)
+```
+
+```{r}
+sum(Par7wk8$balance)/1432066814
+```
+
+
+sum of balance when days late is 15 and above - 24.52%
+```{r}
+Par15wk8 <- Wk8 %>%
+  filter(days_late > 15)
+```
+
+```{r}
+sum(Par15wk8$balance)/1432066814
+```
+
+sum of balance when days late is 30 and above - 18.26%
+```{r}
+Par30wk8 <- Wk8 %>%
+  filter(days_late > 30)
+```
+
+```{r}
+sum(Par30wk8$balance)/1432066814
+```
+
+sum of balance when days late is 60 and above - 8.29%
+```{r}
+Par60wk8 <- Wk8 %>%
+  filter(days_late > 60)
+```
+
+```{r}
+sum(Par60wk8$balance)/1432066814
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
