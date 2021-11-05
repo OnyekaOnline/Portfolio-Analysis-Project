@@ -15,7 +15,7 @@ Data is for a loan company serving the under-served market. The company provides
 
 **Author**
 
-Onyeka Okonkwo
+[Onyeka Okonkwo](https://www.linkedin.com/in/onyeka-okonkwo/)
 
 
 **Reference**
