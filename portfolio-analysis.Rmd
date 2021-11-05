@@ -370,9 +370,7 @@ length(unique(df7$balance))
 sum(unique(df7$balance))
 ```
 NOTES
-
-1. Total GLP = 
-2. Appears there's a disconnect between the loan amount repaid and the balance left for some customers.
+1. Appears there's a disconnect between the loan amount repaid and the balance left for some customers.
 
 
 #Portfolio At Risk (PAR) ANALYSIS and EVOLUTION (7, 15, 30, 60)
@@ -868,20 +866,4 @@ Par60wk8 <- Wk8 %>%
 sum(Par60wk8$balance)/1432066814
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```
+##END
