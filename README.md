@@ -58,6 +58,11 @@ Data is for a loan company serving the under-served market. The company provides
 [Onyeka Okonkwo](https://www.linkedin.com/in/onyeka-okonkwo/)
 
 
+**Medium link for walkthrough - You can read for free**
+
+[Portfolio Risk Analysis Of A Loan Company in R](https://medium.com/@Obianuju/bc0b3a6914b5?source=friends_link&sk=510e2d09177a7f174a1b53765b104901)
+
+
 **Reference**
 
 The project was part of a case study. Dataset is deliberately withheld for privacy purposes. 
