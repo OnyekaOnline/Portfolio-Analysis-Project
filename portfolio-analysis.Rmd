@@ -60,18 +60,18 @@ df$last_payment_date <- dmy(df$last_payment_date)
 df$default_date <- dmy(df$default_date)
 ```
 
-Arrange Date column in chronological order
+#Arrange Date column in chronological order
 ```{r}
 df %>% arrange(date)
 ```
 
-Search for missing values, identifies how many and what columns they're in
+#Search for missing values, identifies how many and what columns they're in
 ```{r}
 sum(is.na(df))
 names(df[, !complete.cases(t(df))])
 ```
 
-Summary of Data
+#Summary of Data
 ```{r}
 summary(df)
 ```
